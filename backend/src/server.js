@@ -12,19 +12,21 @@ const PORT = process.env.PORT || 5001;
 
 // --- REPLACED: SMART CORS CONFIGURATION ---
 app.use(cors({
-    origin: function (origin, callback) {
-        // 1. Allow requests with no origin (like Postman or mobile apps)
-        if (!origin) return callback(null, true);
+  origin: function (origin, callback) {
+    // 1. Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
 
-        // 2. Allow "localhost" (your computer) AND any "vercel.app" link
-        if (origin.includes("localhost") || origin.includes("vercel.app")) {
-            return callback(null, true);
-        }
+    // 2. CHECK: Does the URL contain "vercel.app" or "localhost"?
+    // This automatically allows ALL your preview links
+    if (origin.includes("vercel.app") || origin.includes("localhost")) {
+      return callback(null, true);
+    } 
 
-        // 3. Block everything else
-        return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
+    // 3. Block everything else
+    console.log("Blocked by CORS:", origin); // Optional: Logs blocked requests
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true
 }));
 // ------------------------------------------
 
