@@ -8,18 +8,25 @@ import userRoutes from "./routes/user.route.js";
 import chatRoutes from "./routes/chat.route.js";
 
 const app = express();
-const PORT = process.env.PORT || 5001; // Added fallback port just in case
+const PORT = process.env.PORT || 5001;
 
-// --- THIS IS THE FIX ---
+// --- REPLACED: SMART CORS CONFIGURATION ---
 app.use(cors({
-    origin: [
-        "http://localhost:5173",                      // Localhost (for when you code on PC)
-        "https://streamify-gdhq.vercel.app",          // Vercel Deployment 1
-        "https://streamify-delta-five.vercel.app"     // Vercel Deployment 2
-    ],
+    origin: function (origin, callback) {
+        // 1. Allow requests with no origin (like Postman or mobile apps)
+        if (!origin) return callback(null, true);
+
+        // 2. Allow "localhost" (your computer) AND any "vercel.app" link
+        if (origin.includes("localhost") || origin.includes("vercel.app")) {
+            return callback(null, true);
+        }
+
+        // 3. Block everything else
+        return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
 }));
-// -----------------------
+// ------------------------------------------
 
 app.use(express.json());
 app.use(cookieParser());
