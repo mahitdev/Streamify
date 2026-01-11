@@ -1,70 +1,82 @@
 import { upsertStreamUser } from "../lib/stream.js";
-import User from "../models/User.model.js"; 
+import User from "../models/User.model.js";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs"; 
+import bcrypt from "bcryptjs";
 
 const COOKIE_NAME = "jwt";
+
+// Configuration for Cross-Domain Cookies (Vercel + Render)
+const cookieOptions = {
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    httpOnly: true, // Prevents XSS
+    // ✅ MUST be true for sameSite: "none"
+    secure: true, 
+    // ✅ MUST be "none" because Vercel and Render are different domains
+    sameSite: "none", 
+};
 
 export async function signup(req, res) {
     const { fullName, email, password } = req.body;
     try {
+        // 1. Basic Validation
         if (!fullName || !email || !password) {
             return res.status(400).json({ message: "All fields are required." });
         }
         if (password.length < 6) {
             return res.status(400).json({ message: "Password must be at least 6 characters long." });
         }
-        
+
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
             return res.status(400).json({ message: "Invalid email format." });
         }
 
+        // 2. Check for existing user
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ message: "Email is already registered." });
         }
 
-        // ❌ FIX: Removed manual hashing here. We send the plain password.
-        // The User.model.js will hash it automatically!
-
+        // 3. Create User Object
         const idx = Math.floor(Math.random() * 100) + 1;
         const randomAvatar = `https://avatar.iran.liara.run/public/${idx}.png`;
 
         const newUser = new User({
             fullName,
             email,
-            password: password, // ✅ Sending plain password
-            profilePic: randomAvatar 
+            password, // Plan password (Model hashes this automatically via pre-save hook)
+            profilePic: randomAvatar
         });
 
-        await newUser.save(); // Model hashes it here!
+        await newUser.save();
 
+        // 4. Upsert to Stream (Chat)
         try {
             await upsertStreamUser({
                 id: newUser._id.toString(),
                 name: newUser.fullName,
                 image: newUser.profilePic || "",
             });
-            console.log(`Stream user upserted successfully for ${newUser.fullName}`);
         } catch (error) {
-            console.log("Error upserting Stream user:", error);
+            console.log("Error upserting Stream user:", error.message);
         }
 
+        // 5. Generate Token and Set Cookie
         const token = jwt.sign({ userId: newUser._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-        res.cookie(COOKIE_NAME, token, {
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "Strict",
-        });
+        res.cookie(COOKIE_NAME, token, cookieOptions);
 
-        res.status(201).json({ success: true, user: newUser });
+        // 6. Return Unified User Data Format
+        res.status(201).json({
+            _id: newUser._id,
+            fullName: newUser.fullName,
+            email: newUser.email,
+            profilePic: newUser.profilePic,
+        });
 
     } catch (error) {
         console.error("Signup error:", error);
-        res.status(500).json({ message: "Server error. Please try again later." });
+        res.status(500).json({ message: "Internal Server Error" });
     }
 }
 
@@ -77,7 +89,6 @@ export const login = async (req, res) => {
             return res.status(400).json({ message: "Invalid credentials" });
         }
 
-        // Compare the plain password with the hashed password in DB
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
 
         if (!isPasswordCorrect) {
@@ -85,13 +96,8 @@ export const login = async (req, res) => {
         }
 
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-        
-        res.cookie(COOKIE_NAME, token, {
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "Strict",
-        });
+
+        res.cookie(COOKIE_NAME, token, cookieOptions);
 
         res.status(200).json({
             _id: user._id,
@@ -106,39 +112,31 @@ export const login = async (req, res) => {
 };
 
 export function logout(req, res) {
-    res.clearCookie(COOKIE_NAME);
+    // Clear cookie with same options
+    res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: 0 });
     res.status(200).json({ success: true, message: "Logged out successfully." });
 }
 
 export async function onboard(req, res) {
-  try {
-    const userId = req.user._id;
-    const { fullName, bio, nativeLanguage, learningLanguage, location } = req.body;
+    try {
+        const userId = req.user._id;
+        const { fullName, bio, nativeLanguage, learningLanguage, location } = req.body;
 
-    if (!fullName || !bio || !nativeLanguage || !learningLanguage || !location) {
-      return res.status(400).json({
-        message: "All fields are required for onboarding."
-      });
+        if (!fullName || !bio || !nativeLanguage || !learningLanguage || !location) {
+            return res.status(400).json({ message: "All fields are required." });
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { fullName, bio, nativeLanguage, learningLanguage, location, isOnboarded: true },
+            { new: true }
+        );
+
+        if (!updatedUser) return res.status(404).json({ message: "User not found." });
+
+        res.status(200).json({ success: true, user: updatedUser });
+    } catch (error) {
+        console.error("Onboarding error:", error);
+        res.status(500).json({ message: "Internal Server Error" });
     }
-
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      {
-        fullName,
-        bio,
-        nativeLanguage,
-        learningLanguage,
-        location,
-        isOnboarded: true,
-      },
-      { new: true }
-    );
-
-    if (!updatedUser) return res.status(404).json({ message: "User not found." });
-
-    res.status(200).json({ success: true, user: updatedUser });
-  } catch (error) {
-    console.error("Onboarding error:", error);
-    res.status(500).json({ message: "Server error. Please try again later." });
-  }
 }
