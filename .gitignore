@@ -1,0 +1,17 @@
+# Dependency directories
+node_modules/
+
+# Environment variables (NEVER upload these!)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+dist/
+build/
+
+# Misc
+.DS_Store
+.vscode/
