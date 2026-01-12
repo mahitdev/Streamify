@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import bcrypt from "bcryptjs"; // Make sure you import bcrypt!
+import bcrypt from "bcryptjs"; 
 
 const userSchema = new mongoose.Schema({
     fullName: { type: String, required: true },
@@ -7,17 +7,17 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true, minlength: 6 },
     bio: { type: String, default: "" },
 
-    // FIX 1: Rename to match your Frontend (profilePic)
+    // Match your Frontend (profilePic)
     profilePic: { type: String, default: "" }, 
     
-    // FIX 2: Ensure these match your Controller (camelCase, String)
+    // Ensure these match your Controller (camelCase, String)
     nativeLanguage: { type: String, default: "" },
-    learningLanguage: { type: String, default: "" }, // Changed from learningLanguages array to single String
+    learningLanguage: { type: String, default: "" }, 
     
     location: { type: String, default: "" },
     isOnboarded: { type: Boolean, default: false },
     
-    // FIX 3: Wrap this in [ ] to make it a LIST of friends
+    // List of friends referencing the User model
     friends: [
         { 
             type: mongoose.Schema.Types.ObjectId, 
@@ -26,6 +26,9 @@ const userSchema = new mongoose.Schema({
     ],
 
 },{ timestamps: true });
+
+// Performance: Faster recommendation lookups
+userSchema.index({ isOnboarded: 1, createdAt: -1 });
 
 // Password Hashing Middleware
 userSchema.pre("save", async function (next) {

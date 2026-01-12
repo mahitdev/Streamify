@@ -7,7 +7,7 @@ const friendRequestSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    // FIX: Change 'recepitents' to 'recipient'
+    // ✅ Matches the naming used in your controller logic
     recipient: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -19,8 +19,13 @@ const friendRequestSchema = new mongoose.Schema(
       default: "pending",
     },
   },
-  { timestamps: true }
+  // ✅ Enables createdAt and updatedAt for "Newest First" sorting
+  { timestamps: true } 
 );
+
+// ✅ Performance Optimization: Faster searching for requests by user
+friendRequestSchema.index({ sender: 1, status: 1 });
+friendRequestSchema.index({ recipient: 1, status: 1 });
 
 const FriendRequest = mongoose.model("FriendRequest", friendRequestSchema);
 

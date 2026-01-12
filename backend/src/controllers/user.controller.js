@@ -1,23 +1,23 @@
 import User from "../models/User.model.js";
 import FriendRequest from "../models/FriendRequest.js";
 
-// ================= GET RECOMMENDATIONS (With Debug) =================
+// ================= GET RECOMMENDATIONS (Newest First) =================
 export const getRecommendedUsers = async (req, res) => {
   try {
-    console.log("Current User:", req.user.fullName);
-
     // 1. Get the current user's friends list first
     const currentUser = await User.findById(req.user._id);
-    const myFriends = currentUser.friends || [];
+    const myFriends = currentUser.friends || []; //
 
     // 2. Find users who are NOT me AND NOT in my friends list
     const users = await User.find({
       _id: { 
-        $ne: req.user._id,       // Not me
+        $ne: req.user._id,      // Not me
         $nin: myFriends          // Not my friends ($nin = Not In)
       },
-      isOnboarded: true
-    }).select("-password");
+      isOnboarded: true 
+    })
+    .select("-password")
+    .sort({ createdAt: -1 }); // ✅ NEW: Newest members appear at the top
 
     res.status(200).json(users);
   } catch (error) {
@@ -25,12 +25,13 @@ export const getRecommendedUsers = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
 // ================= GET MY FRIENDS =================
 export async function getMyFriends(req, res) {
   try {
     const user = await User.findById(req.user._id)
       .select("friends")
-      .populate("friends", "fullName profilePic nativeLanguage learningLanguage"); // Fixed CamelCase
+      .populate("friends", "fullName profilePic nativeLanguage learningLanguage"); //
     
     res.status(200).json(user.friends);
   } catch (error) {
@@ -39,17 +40,14 @@ export async function getMyFriends(req, res) {
   }
 }
 
+// ================= SEND FRIEND REQUEST =================
 export async function sendFriendRequest(req, res) {
   try {
     const myId = req.user._id;
     
-    // FIX 1: Check BOTH spellings so it never fails
+    // Safety check for BOTH spellings in URL parameters
     const { id, Id } = req.params;
     const recipientId = id || Id; 
-
-    console.log("--- DEBUG SEND REQUEST ---");
-    console.log("My ID:", myId);
-    console.log("Target ID:", recipientId);
 
     if (!recipientId) {
       return res.status(400).json({ message: "Invalid User ID in URL" });
@@ -64,7 +62,7 @@ export async function sendFriendRequest(req, res) {
       return res.status(404).json({ message: "Recipient user not found." });
     }
 
-    // FIX 2: Use '?.' (Optional Chaining) to prevent crashes if friends list is missing
+    // Optional chaining to prevent crashes if friends list is missing
     if (recipient.friends?.includes(myId)) {
       return res.status(400).json({ message: "You are already friends." });
     }
@@ -104,7 +102,7 @@ export async function acceptFriendRequest(req, res) {
       return res.status(404).json({ message: "Friend request not found" });
     }
 
-    // FIX: Corrected logic to check if current user is the recipient
+    // Check if current user is the actual recipient
     if (friendRequest.recipient.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not authorized" });
     }
@@ -112,6 +110,7 @@ export async function acceptFriendRequest(req, res) {
     friendRequest.status = "accepted";
     await friendRequest.save();
 
+    // Bi-directional friend update
     await User.findByIdAndUpdate(friendRequest.sender, {
       $addToSet: { friends: friendRequest.recipient }
     });
@@ -132,12 +131,16 @@ export async function getFriendRequest(req, res) {
     const incomingReqs = await FriendRequest.find({
       recipient: req.user._id,
       status: "pending"
-    }).populate("sender", "fullName profilePic nativeLanguage learningLanguage"); // Fixed CamelCase
+    })
+    .populate("sender", "fullName profilePic nativeLanguage learningLanguage")
+    .sort({ createdAt: -1 }); // ✅ NEW: Most recent incoming requests at top
 
     const acceptedReqs = await FriendRequest.find({
       sender: req.user._id,
       status: "accepted"
-    }).populate("recipient", "fullName profilePic");
+    })
+    .populate("recipient", "fullName profilePic")
+    .sort({ updatedAt: -1 }); // ✅ NEW: Most recently accepted at top
 
     res.status(200).json({ incomingReqs, acceptedReqs });
   } catch (error) {
@@ -152,7 +155,9 @@ export async function getOutgoingFriendRequests(req, res) {
     const outgoingReqs = await FriendRequest.find({
       sender: req.user._id,
       status: "pending"
-    }).populate("recipient", "fullName profilePic nativeLanguage learningLanguage"); // Fixed CamelCase
+    })
+    .populate("recipient", "fullName profilePic nativeLanguage learningLanguage")
+    .sort({ createdAt: -1 }); // ✅ NEW: Your newest sent requests at top
 
     res.status(200).json(outgoingReqs);
   } catch (error) {
